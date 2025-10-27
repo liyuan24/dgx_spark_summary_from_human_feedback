@@ -1,0 +1,17 @@
+[project]
+name = "dgx-spark-summary-from-human-feedback"
+version = "0.1.0"
+description = "Reproduce Learning to summarize from human feedback in DGX Spark"
+authors = [
+    {name = "Liyuan Liu"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
