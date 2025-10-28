@@ -65,6 +65,7 @@ def process_sft_data(
         "query_tokens": query_tokens,
     }
     # add a prefix whitespace and a suffix <|endoftext|> eos token to reference summary
+    # add <|endoftext|> after summary also make it easier for label shifting
     response = f" {x['summary']}<|endoftext|>"
     response_tokens = tokenizer.encode(
         response,
@@ -83,6 +84,9 @@ def process_sft_data(
     query_and_response_labels = copy.deepcopy(query_and_response_tokens)
     # mask the query tokens in the query and response as -100 to not calculate loss on user query
     query_and_response_labels[:query_token_length_without_padding] = [-100] * query_token_length_without_padding
+    # mask the padding tokens label as -100 to not calculate loss on padding tokens
+    padded_query_and_response_tokens = [token for token in query_and_response_tokens if token == tokenizer.pad_token_id]
+    query_and_response_labels[-len(padded_query_and_response_tokens):] = [-100] * len(padded_query_and_response_tokens)
     return {
         "query": query,
         "query_tokens": query_tokens,
@@ -110,7 +114,7 @@ if __name__ == "__main__":
         query_padding_token="[PAD]",
         query_padding_side="right",
         max_sft_response_length=63,
-        max_sft_query_response_length=562,
+        max_sft_query_response_length=575,
     )
     model = "Qwen/Qwen2.5-0.5B"
     tokenizer = AutoTokenizer.from_pretrained(model)
