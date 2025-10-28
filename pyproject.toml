@@ -9,6 +9,8 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "black>=25.0.0",
+    "pytest>=7.0.0",
 ]
 
 
