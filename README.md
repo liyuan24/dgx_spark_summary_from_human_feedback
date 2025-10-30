@@ -31,16 +31,6 @@ We use [summarize_from_feedback_tldr_3_filtered](https://huggingface.co/datasets
 
 ## Supervised Fine-tuning
 
-<style>
-table td pre code {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-width: 20ch;
-  display: block;
-  overflow-wrap: break-word;
-}
-</style>
-
 <table>
 <tr>
 <th>input</th>
@@ -48,7 +38,7 @@ table td pre code {
 <th>SFT model tldr</th>
 </tr>
 <tr>
-<td valign="top"><pre><code>SUBREDDIT: r/tifu
+<td valign="top"><pre style="white-space: pre-wrap; word-wrap: break-word; max-width: 20ch; overflow-wrap: break-word;"><code>SUBREDDIT: r/tifu
 
 TITLE: TIFU by forgetting my lube in the shower
 
@@ -63,7 +53,7 @@ POST: So I'm sitting in the living room with my then GF not long ago and my room
 At this point I have figured out that the little black bottle to which he kept referring was my bottle of lube. I glanced over at my GF and all the color had drained from her face and she was trying not to give it away that she knew. With the straightest face I could muster I told him that I still had no idea. I haven't told him to this day.
 
 TL;DR:</code></pre></td>
-<td valign="top"><pre><code>I'm not sure if I should tell my GF that I forgot to put my lube in the shower. I'm not sure if I should tell my GF that I forgot to put my lube in the shower. I'm not sure if I should tell my GF that I forgot to put my lube in</code></pre></td>
+<td valign="top"><pre style="white-space: pre-wrap; word-wrap: break-word; max-width: 20ch; overflow-wrap: break-word;"><code>I'm not sure if I should tell my GF that I forgot to put my lube in the shower. I'm not sure if I should tell my GF that I forgot to put my lube in the shower. I'm not sure if I should tell my GF that I forgot to put my lube in</code></pre></td>
 <td valign="top"></td>
 </tr>
 </table>
