@@ -31,6 +31,16 @@ We use [summarize_from_feedback_tldr_3_filtered](https://huggingface.co/datasets
 
 ## Supervised Fine-tuning
 
+<style>
+table td pre code {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 20ch;
+  display: block;
+  overflow-wrap: break-word;
+}
+</style>
+
 <table>
 <tr>
 <th>input</th>
