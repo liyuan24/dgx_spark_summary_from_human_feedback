@@ -103,7 +103,9 @@ def upload_dataset(hf_entity: str, final_dataset: DatasetDict, args: Args):
         hf_path = f"{hf_entity}/{upload_dataset_name}"
         print(f"\nUploading dataset to: {hf_path}")
         final_dataset.push_to_hub(hf_path)
-        print(f"Dataset uploaded successfully to: https://huggingface.co/datasets/{hf_path}")
+        print(
+            f"Dataset uploaded successfully to: https://huggingface.co/datasets/{hf_path}"
+        )
         final_dataset_card = RepoCard.load(hf_path, repo_type="dataset")
         final_dataset_card.text = f"""\
 # TL;DR SFT Dataset for OpenAI's [Summarize from Feedback](https://arxiv.org/abs/2009.01325) task
@@ -145,7 +147,7 @@ These columns are added by this preprocessing script:
 
 def process_and_upload_dataset(args: Args):
     api = HfApi()
-    hf_entity = api.whoami()['name']
+    hf_entity = api.whoami()["name"]
     print(f"Logged in as: {hf_entity}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     padding_token = args.padding_token
@@ -213,6 +215,7 @@ def process_and_upload_dataset(args: Args):
         num_proc=1 if args.debug else os.cpu_count(),
     )
     upload_dataset(hf_entity, sft_source_dataset, args)
+
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
