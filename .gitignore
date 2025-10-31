@@ -80,4 +80,10 @@ Thumbs.db
 *.tmp
 *.temp
 
+# PyTorch checkpoints
+*.pt
+
+# Wandb
+wandb/
+
 

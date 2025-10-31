@@ -38,62 +38,78 @@ We use [summarize_from_feedback_tldr_3_filtered](https://huggingface.co/datasets
 <th>SFT model tldr</th>
 </tr>
 <tr>
-<td valign="top"><pre><code>SUBREDDIT: r/tifu
+<td valign="top"><pre><code>SUBREDDIT: r/relationships
 
-TITLE: TIFU by forgetting my lube
-in the shower
+TITLE: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?
 
-POST: So I'm sitting in the living
-room with my then GF not long ago
-and my roommate (Carl with the
-slicked back hair) comes in from
-the bathroom to ask me where the
-little black bottle in the shower
-went. Confused, I looked back at
-him and told him I didn't know
-what he was talking about. This is
-about what happened next:
+POST: I have been dating this
+guy for 1 month now and
+everything was great until
+last Sunday when I noticed he
+wasn't responding to my text
+with the same flirty, cute,
+enthusiastic text that he
+usually would. He used to
+call me baby, babe but since
+last Sunday he has said none
+of those words and texting
+has been less and
+communication has been less.
 
-\>Carl: Are you sure it wasn't
-yours? It appeared in the bathroom
-the other day and then today it's
-gone.
+He invited me over last night
+to watch a movie so I went
+over and I think we had one
+conversation the whole night,
+it was how my day was. He
+never even tried to start a
+conversation after the movie
+and he has never asked if he
+could get high in front of me
+until today which I was
+totally fine with but I
+thought it was weird that the
+whole time we hung out before
+he never smoked in front of
+me. I am not sure if he's
+getting comfortable or he
+just doesn't care anymore?
 
-\>Me: Still not sure. Why do you
-ask?
+Anyways, as he was walking me
+out to my car I asked him if
+everything was okay because
+he has been acting different.
+His only response was, "Yes,
+I'm fine" and then it got
+awkward and I left in my car.
 
-\>Carl: Aww...damn. Whatever that
-shit was it was awesome. It was
-like this conditioner or something
-that kept my hair super slick alll
-day long. It was crazy, not even
-water could get it out. It worked
-so much better than the hair stuff
-I use right now. Maybe Jenny (his
-GF) knows where it went. Are you
-sure you don't know?
-
-At this point I have figured out
-that the little black bottle to
-which he kept referring was my
-bottle of lube. I glanced over at
-my GF and all the color had
-drained from her face and she was
-trying not to give it away that
-she knew. With the straightest
-face I could muster I told him
-that I still had no idea. I
-haven't told him to this day.
+Do you think I am being pushy
+or too clingy asking that
+question? I regret asking it
+right after I asked it
+because it makes me feel like
+I have low self-esteem for
+this relationship. Maybe I
+just worry too much but it
+has been eating at me.
 
 TL;DR:</code></pre></td>
-<td valign="top"><pre><code>I'm not sure if I should tell my
-GF that I forgot to put my lube
-in the shower. I'm not sure if I
-should tell my GF that I forgot
-to put my lube in the shower. I'm
-not sure if I should tell my GF
-that I forgot to put my lube in</code></pre></td>
-<td valign="top"></td>
+<td valign="top"><pre><code> Is it okay to ask if
+everything is okay or am I
+being pushy?
+
+Title: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?</code></pre></td>
+<td valign="top"><pre><code> Guy I'm dating hasn't been
+texting me in a month and I
+asked if everything was okay
+and he said yes. Am I being
+pushy or too clingy asking if
+everything is okay?<|endoftext|></code></pre></td>
 </tr>
 </table>
 
@@ -105,5 +121,23 @@ sudo docker build --build-arg HF_TOKEN=$HF_TOKEN -t summary_from_human_feedback 
 ### 2. Run the Docker Container
 ```bash
 sudo sh lauch_docker.sh
-cd /summary_from_human_feedback
+cd /dgx_spark_summary_from_human_feedback
+```
+
+### 3. Optional, to start another terminal in docker container
+```bash
+docker ps # to get the container id
+sudo docker exec -it <container_id> /bin/bash
+```
+
+### 4. Train the SFT model
+```bash
+python sft.py
+```
+
+### 5. Generate text from the SFT model checkpoint
+
+```bash
+cd ..
+python3 -m dgx_spark_summary_from_human_feedback.generation --checkpoint_path your_checkpoint_path.pt
 ```
