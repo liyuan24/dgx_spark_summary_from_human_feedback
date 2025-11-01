@@ -3,13 +3,11 @@
 This repo contains the code for reproducing [Learning to summarize from human feedback](https://arxiv.org/abs/2009.01325) in one DGX Spark. [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) has already done this in an 8-H100 cluster. We will refer to this work for many details.
 
 # Steps
+1. Supervised Fine-tuning
+2. Reward Model Training
+3. Reinforcement learning from human feedback
 
-1. Preprocessing the data
-2. Supervised Fine-tuning
-3. Reward Model Training
-4. Reinforcement learning from human feedback
-
-# Preprocessing the TLDR dataset
+# Supervised Fine-tuning
 I will first use [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) as the base model and its tokenizer to preprocess the TLDR dataset. Checking the padding token and eos token of the tokenizer,
 
 ```python
@@ -104,6 +102,10 @@ python3 -m dgx_spark_summary_from_human_feedback.process_sft_dataset
 <td>seangogo/processed_tldr_sft_dataset_20251029_045736</td>
 </tr>
 </table>
+
+### Training and Validation Loss
+![training loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/SUMMARY_TRAINING_LOSS.png)
+![validation loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/SUMMARY_VALIDATION_LOSS.png)
 
 ### Example Responses
 It is clear that TLDR from SFT model is making much more sense than the base model.
