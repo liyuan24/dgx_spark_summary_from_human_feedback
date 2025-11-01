@@ -30,7 +30,24 @@ Do you think I am being pushy or too clingy asking that question? I regret askin
 TL;DR:"""
 
 
-def load_checkpoint(checkpoint_path, model_name, device_map="auto", dtype="bfloat16"):
+def load_hf_checkpoint(checkpoint_path, dtype="bfloat16"):
+    """
+    Load a fine-tuned checkpoint and return the model and tokenizer.
+    """
+    print("Load HF checkpoint from: ", checkpoint_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        checkpoint_path, trust_remote_code=True, dtype=dtype, device_map="auto"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, trust_remote_code=True)
+    if model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+    model.eval()
+    return model, tokenizer
+
+
+def load_torch_checkpoint(
+    checkpoint_path, model_name, device_map="auto", dtype="bfloat16"
+):
     """
     Load a fine-tuned checkpoint and return the model and tokenizer.
 
@@ -72,7 +89,7 @@ def load_checkpoint(checkpoint_path, model_name, device_map="auto", dtype="bfloa
     model.eval()
 
     print("Checkpoint loaded successfully!")
-    return model
+    return model, tokenizer
 
 
 def generate_text(
@@ -106,6 +123,8 @@ def generate_text(
             **inputs,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
+            eos_token_id=tokenizer.eos_token_id,
+            do_sample=True,
         )
 
     # Decode generated text
@@ -125,10 +144,16 @@ def parse_args():
         help="Use base model for text generation",
     )
     parser.add_argument(
+        "--use_hf_checkpoint",
+        action="store_true",
+        default=True,
+        help="Use HF checkpoint for text generation",
+    )
+    parser.add_argument(
         "--checkpoint_path",
         type=str,
-        required=True,
-        help="Path to the checkpoint file (.pt file)",
+        default=None,
+        help="Path to the checkpoint",
     )
     parser.add_argument(
         "--model_name",
@@ -167,20 +192,22 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     if args.use_base_model:
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name, trust_remote_code=True, dtype=args.dtype, device_map="auto"
         )
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_name, trust_remote_code=True
+        )
     else:
         # Load checkpoint
-        model = load_checkpoint(
-            checkpoint_path=args.checkpoint_path,
-            model_name=args.model_name,
-            dtype=args.dtype,
-        )
+        assert args.checkpoint_path is not None, "Checkpoint path is required"
+        if args.use_hf_checkpoint:
+            model, tokenizer = load_hf_checkpoint(args.checkpoint_path, args.dtype)
+        else:
+            model, tokenizer = load_torch_checkpoint(
+                args.checkpoint_path, args.model_name, args.dtype
+            )
 
     # Generate text
     print(f"\n{'='*70}")
@@ -201,9 +228,7 @@ if __name__ == "__main__":
         )
 
     # Decode generated text
-    generated_text = tokenizer.decode(
-        outputs[0][input_length:]
-    )
+    generated_text = tokenizer.decode(outputs[0][input_length:])
 
     print(f"Generated text:\n{generated_text}\n")
     print(f"Generated tokens:\n{outputs[0][input_length:]}\n")

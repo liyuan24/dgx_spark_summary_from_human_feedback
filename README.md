@@ -139,5 +139,5 @@ python sft.py
 
 ```bash
 cd ..
-python3 -m dgx_spark_summary_from_human_feedback.generation --checkpoint_path your_checkpoint_path.pt
+python3 -m dgx_spark_summary_from_human_feedback.generation --checkpoint_path your_checkpoint_path --use_hf_checkpoint
 ```

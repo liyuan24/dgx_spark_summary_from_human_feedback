@@ -83,6 +83,9 @@ Thumbs.db
 # PyTorch checkpoints
 *.pt
 
+# SFT output directory
+sft_output/
+
 # Wandb
 wandb/
 

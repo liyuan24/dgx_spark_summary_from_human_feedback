@@ -188,7 +188,6 @@ class SFTTrainer:
                             self.model.parameters(), self.config.grad_clip
                         )
                     self.optimizer.step()
-                    global_step += 1
                     self.optimizer.zero_grad(set_to_none=True)
                     if self.config.wandb_log:
                         wandb.log(
@@ -196,35 +195,66 @@ class SFTTrainer:
                                 "train_loss": step_loss,
                             }
                         )
+                    if (global_step + 1) % self.config.eval_interval == 0:
+                        eval_loss = self.run_evaluation()
+                        print(
+                            f"Epoch {epoch + 1}, Global Step: {global_step}, training loss: {step_loss:.4f}, evaluation loss: {eval_loss:.4f}"
+                        )
+                        if self.config.wandb_log:
+                            wandb.log(
+                                {
+                                    "eval_loss": eval_loss,
+                                }
+                            )
+                        if eval_loss < best_eval_loss:
+                            best_eval_loss = eval_loss
+                            output_dir = os.path.join(
+                                self.config.output_dir, f"checkpoint_{global_step}"
+                            )
+                            self.save_checkpoint(
+                                output_dir,
+                                self.model,
+                                self.tokenizer,
+                                self.optimizer,
+                                global_step,
+                                best_eval_loss,
+                                self.config,
+                            )
                     step_loss = 0
-                if (global_step + 1) % self.config.eval_interval == 0:
-                    eval_loss = self.run_evaluation()
-                    print(
-                        f"Epoch {epoch + 1}, Global Step: {global_step}, evaluation loss: {eval_loss:.4f}"
-                    )
-                    if self.config.wandb_log:
-                        wandb.log(
-                            {
-                                "eval_loss": eval_loss,
-                            }
-                        )
-                    if eval_loss < best_eval_loss:
-                        best_eval_loss = eval_loss
-                        checkpoint = {
-                            "model": model.state_dict(),
-                            "optimizer": self.optimizer.state_dict(),
-                            "model_config": model.config,
-                            "global_step": global_step,
-                            "best_eval_loss": best_eval_loss,
-                            "config": self.config,
-                        }
-                        torch.save(
-                            checkpoint,
-                            os.path.join(
-                                self.config.output_dir,
-                                f"sft_{global_step}.pt",
-                            ),
-                        )
+                    global_step += 1
+
+    def save_checkpoint(
+        self,
+        output_dir,
+        model,
+        tokenizer,
+        optimizer,
+        global_step,
+        best_eval_loss,
+        config,
+    ):
+        """
+        Saves:
+        - HF model weights + config (save_pretrained)
+        - HF tokenizer (save_pretrained)
+        - Training state (optimizer/scheduler/scaler/custom) to training_state.pt
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 1) Save model + tokenizer in HF-native format
+        model.save_pretrained(output_dir)  # saves pytorch_model.bin + config.json
+        tokenizer.save_pretrained(
+            output_dir
+        )  # saves tokenizer.json, tokenizer_config.json, etc.
+
+        # 2) Save training state as a small .pt next to them
+        training_state = {
+            "optimizer": optimizer.state_dict(),
+            "global_step": global_step,
+            "best_eval_loss": best_eval_loss,
+            "config": config,
+        }
+        torch.save(training_state, os.path.join(output_dir, "training_state.pt"))
 
     @torch.no_grad()
     def run_evaluation(self):
@@ -308,17 +338,17 @@ def parse_args():
         help="Directory to save the fine-tuned model",
     )
     parser.add_argument(
-        "--num_train_epochs", type=int, default=2, help="Number of training epochs"
+        "--num_train_epochs", type=int, default=1, help="Number of training epochs"
     )
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
     parser.add_argument(
         "--grad_clip", type=float, default=1.0, help="Gradient clipping"
     )
     parser.add_argument(
-        "--learning_rate", type=float, default=5e-4, help="Learning rate"
+        "--learning_rate", type=float, default=3e-6, help="Learning rate"
     )
     parser.add_argument(
-        "--min_learning_rate", type=float, default=5e-5, help="Minimum learning rate"
+        "--min_learning_rate", type=float, default=3e-7, help="Minimum learning rate"
     )
     parser.add_argument(
         "--warmup_steps", type=int, default=10, help="Number of warmup steps"
@@ -326,7 +356,7 @@ def parse_args():
     parser.add_argument(
         "--lr_decay_steps",
         type=int,
-        default=100,
+        default=800,
         help="Number of steps for learning rate decay",
     )
 
@@ -349,7 +379,7 @@ def parse_args():
         help="summary_from_human_feedback_sft",
     )
     parser.add_argument(
-        "--wandb_run_name", type=str, default="2nd run", help="run name"
+        "--wandb_run_name", type=str, default="4th run", help="run name"
     )
 
     # Optimizer configs
