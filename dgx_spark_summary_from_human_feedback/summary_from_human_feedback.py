@@ -61,22 +61,20 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                         "title": datasets.Value("string"),
                         "subreddit": datasets.Value("string"),
                         "site": datasets.Value("string"),
-                        "article": datasets.Value("string")
+                        "article": datasets.Value("string"),
                     },
                     "summaries": [
-                      {
-                        "text": datasets.Value("string"),
-                        "policy": datasets.Value("string"),
-                        "note": datasets.Value("string"),
-                      },
+                        {
+                            "text": datasets.Value("string"),
+                            "policy": datasets.Value("string"),
+                            "note": datasets.Value("string"),
+                        },
                     ],
                     "choice": datasets.Value("int32"),
                     "worker": datasets.Value("string"),
                     "batch": datasets.Value("string"),
                     "split": datasets.Value("string"),
-                    "extra": {
-                      "confidence": datasets.Value("int32")
-                    }
+                    "extra": {"confidence": datasets.Value("int32")},
                 }
             ),
         ),
@@ -90,7 +88,7 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                         "title": datasets.Value("string"),
                         "subreddit": datasets.Value("string"),
                         "site": datasets.Value("string"),
-                        "article": datasets.Value("string")
+                        "article": datasets.Value("string"),
                     },
                     "summary": {
                         "text": datasets.Value("string"),
@@ -101,12 +99,12 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                             "accuracy": datasets.Value("int32"),
                             "coverage": datasets.Value("int32"),
                             "coherence": datasets.Value("int32"),
-                            "compatible": datasets.Value("bool")
-                        }
+                            "compatible": datasets.Value("bool"),
+                        },
                     },
                     "worker": datasets.Value("string"),
                     "batch": datasets.Value("string"),
-                    "split": datasets.Value("string")
+                    "split": datasets.Value("string"),
                 }
             ),
         ),
@@ -147,7 +145,7 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
             "batch0_cnndm.json",
             "cnndm0.json",
             "cnndm2.json",
-            "edit_b2_eval_test.json"
+            "edit_b2_eval_test.json",
         ]
 
         axis_batch_files = [
@@ -159,11 +157,19 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
         ]
 
         if self.config.name == "axis":
-            downloaded_files = dl_manager.download_and_extract([os.path.join(_URL, "axis_evals", batch_file) for batch_file in axis_batch_files])
+            downloaded_files = dl_manager.download_and_extract(
+                [
+                    os.path.join(_URL, "axis_evals", batch_file)
+                    for batch_file in axis_batch_files
+                ]
+            )
 
             examples = []
             for file in downloaded_files:
-                examples += [json.loads(comparisons_json) for comparisons_json in open(file).readlines()]
+                examples += [
+                    json.loads(comparisons_json)
+                    for comparisons_json in open(file).readlines()
+                ]
 
             test_examples = []
             valid_examples = []
@@ -173,17 +179,34 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                 elif example["split"] in ("valid1", "valid2"):
                     valid_examples.append(example)
                 else:
-                    raise ValueError(f"{example['split']} is an unrecognized dataset split.")
+                    raise ValueError(
+                        f"{example['split']} is an unrecognized dataset split."
+                    )
 
-            return [datasets.SplitGenerator(name=datasets.Split.TEST, gen_kwargs={"raw_examples": test_examples}),
-                datasets.SplitGenerator(name=datasets.Split.VALIDATION, gen_kwargs={"raw_examples": valid_examples})]
+            return [
+                datasets.SplitGenerator(
+                    name=datasets.Split.TEST, gen_kwargs={"raw_examples": test_examples}
+                ),
+                datasets.SplitGenerator(
+                    name=datasets.Split.VALIDATION,
+                    gen_kwargs={"raw_examples": valid_examples},
+                ),
+            ]
 
         elif self.config.name == "comparisons":
-            downloaded_files = dl_manager.download_and_extract([os.path.join(_URL, "comparisons", batch_file) for batch_file in comparison_batch_files])
+            downloaded_files = dl_manager.download_and_extract(
+                [
+                    os.path.join(_URL, "comparisons", batch_file)
+                    for batch_file in comparison_batch_files
+                ]
+            )
 
             examples = []
             for file in downloaded_files:
-                examples += [json.loads(comparisons_json) for comparisons_json in open(file).readlines()]
+                examples += [
+                    json.loads(comparisons_json)
+                    for comparisons_json in open(file).readlines()
+                ]
 
             train_examples = []
             valid_examples = []
@@ -193,14 +216,25 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                 elif example["split"] in ("valid1", "valid2"):
                     valid_examples.append(example)
                 else:
-                    raise ValueError(f"{example['split']} is an unrecognized dataset split.")
+                    raise ValueError(
+                        f"{example['split']} is an unrecognized dataset split."
+                    )
 
-            return [datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={"raw_examples": train_examples}),
-                datasets.SplitGenerator(name=datasets.Split.VALIDATION, gen_kwargs={"raw_examples": valid_examples})]
+            return [
+                datasets.SplitGenerator(
+                    name=datasets.Split.TRAIN,
+                    gen_kwargs={"raw_examples": train_examples},
+                ),
+                datasets.SplitGenerator(
+                    name=datasets.Split.VALIDATION,
+                    gen_kwargs={"raw_examples": valid_examples},
+                ),
+            ]
 
         else:
-            raise ValueError("Unrecognized config name. Options are axis and comparisons")
-
+            raise ValueError(
+                "Unrecognized config name. Options are axis and comparisons"
+            )
 
     def _generate_examples(self, raw_examples, no_labels=False):
         """Yields examples."""
@@ -230,7 +264,9 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
                 if "compatible" not in example["summary"]["axes"]:
                     example["summary"]["axes"]["compatible"] = None
             else:
-                raise ValueError("Unrecognized config name. Options are axis and comparisons")
+                raise ValueError(
+                    "Unrecognized config name. Options are axis and comparisons"
+                )
 
             if "article" not in example["info"]:
                 example["info"]["article"] = None
@@ -247,11 +283,14 @@ class SummarizeFromFeedback(datasets.GeneratorBasedBuilder):
             id_ += 1
             yield id_, example
 
+
 if __name__ == "__main__":
-    summary_from_human_feedback = SummarizeFromFeedback(config_name='comparisons')
+    summary_from_human_feedback = SummarizeFromFeedback(config_name="comparisons")
     summary_from_human_feedback.download_and_prepare()
     train_dataset = summary_from_human_feedback.as_dataset(split=datasets.Split.TRAIN)
-    validation_dataset = summary_from_human_feedback.as_dataset(split=datasets.Split.VALIDATION)
+    validation_dataset = summary_from_human_feedback.as_dataset(
+        split=datasets.Split.VALIDATION
+    )
     print(type(train_dataset))
     print(len(train_dataset))
     print(len(validation_dataset))
