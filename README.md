@@ -221,3 +221,19 @@ python sft.py
 cd ..
 python3 -m dgx_spark_summary_from_human_feedback.generation --checkpoint_path your_checkpoint_path --use_hf_checkpoint
 ```
+
+## Reward Model
+The dataset for reward model is [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback). But we cannot use `datasets.load_dataset` to download it because it is using a builder class which is not supported by new version of `datasets` library.
+
+### Download the comparison dataset
+I will use [summarize_from_feedback.py](https://huggingface.co/datasets/openai/summarize_from_feedback/blob/main/summarize_from_feedback.py) to download the comparison dataset. I copied it to the repo and name it to `summarize_from_feedback.py`.
+
+Use this command to download the comparison dataset and get the number of maximum length of tokens for both chosen and rejected responses. Note the tokenizer is [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B).
+```bash
+python3 -m dgx_spark_summary_from_human_feedback.get_comparison_data_stats
+```
+
+```
+max length of training data: 133
+max length of validation data: 133
+```
