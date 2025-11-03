@@ -14,6 +14,7 @@ from transformers import (
     PretrainedConfig,
 )
 
+
 @dataclass
 class RewardConfig:
     # training configs
@@ -55,13 +56,11 @@ class ScalarModelConfig(PretrainedConfig):
         self,
         base_model: str = "Qwen/Qwen2.5-0.5B",
         base_config: PretrainedConfig = AutoConfig.from_pretrained("Qwen/Qwen2.5-0.5B"),
-        hidden_size: int = 896,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.base_model = base_model
         self.base_config = base_config
-        self.hidden_size = hidden_size
 
 
 class RewardModel(PreTrainedModel):
@@ -73,11 +72,13 @@ class RewardModel(PreTrainedModel):
         self.lm_backbone = AutoModel.from_pretrained(
             config.base_model, config=config.base_config, trust_remote_code=True
         )
-        self.scalar_head = nn.Linear(config.hidden_size, 1)
+        self.scalar_head = nn.Linear(config.base_config.hidden_size, 1)
         nn.init.normal_(
-            self.scalar_head.weight, mean=0.0, std=1.0 / math.sqrt(config.hidden_size + 1)
+            self.scalar_head.weight,
+            mean=0.0,
+            std=1.0 / math.sqrt(config.base_config.hidden_size + 1),
         )
-    
+
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         output = self.lm_backbone(input_ids)
         # [batch_size, sequence_length, 1]
@@ -122,6 +123,7 @@ def get_reward(
     reward = torch.where(has_eos, reward, torch.full_like(reward, -1))
     # [batch_size, ]
     return reward.squeeze(1)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -233,14 +235,19 @@ def parse_args():
 
     return parser.parse_args()
 
+
 def process_dataset(dataset: Dataset, dataset_size: Optional[int] = None) -> Dataset:
     if dataset_size is not None:
         dataset = dataset.select(range(dataset_size))
     torch_dataset = dataset.with_format(
         type="torch",
-        columns=["query_and_chosen_response_tokens", "query_and_rejected_response_tokens"],
+        columns=[
+            "query_and_chosen_response_tokens",
+            "query_and_rejected_response_tokens",
+        ],
     )
     return torch_dataset
+
 
 if __name__ == "__main__":
     args = parse_args()
@@ -248,7 +255,6 @@ if __name__ == "__main__":
     model_config = ScalarModelConfig(
         base_model=model_path,
         base_config=AutoConfig.from_pretrained(model_path),
-        hidden_size=896,
     )
     reward_model = RewardModel(model_config)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -257,8 +263,10 @@ if __name__ == "__main__":
     train_dataset = process_dataset(raw_train_dataset, args.train_dataset_size)
     validation_dataset = process_dataset(raw_validation_dataset, args.eval_dataset_size)
     example = train_dataset[0:2]
-    query_chosen_response_tokens = example['query_and_chosen_response_tokens']
-    query_rejected_response_tokens = example['query_and_rejected_response_tokens']
-    input_tokens = torch.concat([query_chosen_response_tokens, query_rejected_response_tokens], dim=0)
+    query_chosen_response_tokens = example["query_and_chosen_response_tokens"]
+    query_rejected_response_tokens = example["query_and_rejected_response_tokens"]
+    input_tokens = torch.concat(
+        [query_chosen_response_tokens, query_rejected_response_tokens], dim=0
+    )
     rewards = get_reward(reward_model, tokenizer, input_tokens)
     print(f"rewards: {rewards}, shape: {rewards.shape}")
