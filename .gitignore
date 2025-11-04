@@ -86,6 +86,9 @@ Thumbs.db
 # SFT output directory
 sft_output/
 
+# Reward output directory
+reward_output/
+
 # Wandb
 wandb/
 

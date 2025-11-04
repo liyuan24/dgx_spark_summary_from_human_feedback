@@ -1,10 +1,16 @@
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import math
+import os
+import random
 from typing import Optional
 from datasets import Dataset, load_dataset
+from datasets.table import np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -13,6 +19,7 @@ from transformers import (
     PreTrainedTokenizer,
     PretrainedConfig,
 )
+import bitsandbytes as bnb
 
 
 @dataclass
@@ -22,9 +29,7 @@ class RewardConfig:
     batch_size: int = 8
     grad_clip: float = 1.0
     learning_rate: float = 1e-4
-    min_learning_rate: float = 1e-5
-    warmup_steps: int = 10
-    lr_decay_steps: int = 1000
+    warmup_ratio: float = 0.03
     train_dataset_size: Optional[int] = None
     seed: int = 42
     dataset: str = "seangogo/processed_tldr_comparison_dataset_20251102_065554"
@@ -70,9 +75,10 @@ class RewardModel(PreTrainedModel):
         super().__init__(config)
         self.config = config
         self.lm_backbone = AutoModel.from_pretrained(
-            config.base_model, config=config.base_config, trust_remote_code=True
+            config.base_model, config=config.base_config, trust_remote_code=True, device_map="auto"
         )
-        self.scalar_head = nn.Linear(config.base_config.hidden_size, 1)
+        self.scalar_head = nn.Linear(config.base_config.hidden_size, 1, device=self.lm_backbone.device)
+        # Details 10 in https://arxiv.org/abs/2403.17031
         nn.init.normal_(
             self.scalar_head.weight,
             mean=0.0,
@@ -95,6 +101,7 @@ def get_reward(
     """
     Forward pass the chosen and rejected query responses to get the reward. The rewards are only extracted
     at eos tokens for each example in the batch. When no eos token is found, the reward is set to -1.
+    See eos trick in https://arxiv.org/abs/2403.17031
 
     Args:
         model: the model to use for reward calculation
@@ -131,7 +138,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--model_path", type=str, default="Qwen/Qwen2.5-0.5B", help="reward model path"
+        "--model_path", type=str, default="./sft_output/checkpoint_809", help="base reward model path"
     )
     parser.add_argument(
         "--dataset",
@@ -149,7 +156,7 @@ def parse_args():
         "--train_dataset_size", type=int, default=None, help="Training dataset size"
     )
     parser.add_argument(
-        "--eval_dataset_size", type=int, default=1000, help="Evaluation dataset size"
+        "--eval_dataset_size", type=int, default=500, help="Evaluation dataset size"
     )
 
     # Training configs
@@ -167,19 +174,10 @@ def parse_args():
         "--grad_clip", type=float, default=1.0, help="Gradient clipping"
     )
     parser.add_argument(
-        "--learning_rate", type=float, default=3e-6, help="Learning rate"
+        "--learning_rate", type=float, default=1e-4, help="Learning rate"
     )
     parser.add_argument(
-        "--min_learning_rate", type=float, default=3e-7, help="Minimum learning rate"
-    )
-    parser.add_argument(
-        "--warmup_steps", type=int, default=10, help="Number of warmup steps"
-    )
-    parser.add_argument(
-        "--lr_decay_steps",
-        type=int,
-        default=800,
-        help="Number of steps for learning rate decay",
+        "--warmup_ratio", type=float, default=0.03, help="Warmup ratio"
     )
 
     # Evaluation configs
@@ -197,11 +195,11 @@ def parse_args():
     parser.add_argument(
         "--wandb_project",
         type=str,
-        default="summary_from_human_feedback_sft",
-        help="summary_from_human_feedback_sft",
+        default="summary_from_human_feedback_reward",
+        help="summary_from_human_feedback_reward",
     )
     parser.add_argument(
-        "--wandb_run_name", type=str, default="4th run", help="run name"
+        "--wandb_run_name", type=str, default="2nd run", help="run name"
     )
 
     # Optimizer configs
@@ -249,6 +247,264 @@ def process_dataset(dataset: Dataset, dataset_size: Optional[int] = None) -> Dat
     return torch_dataset
 
 
+def disable_dropout(model: torch.nn.Module):
+    for module in model.modules():
+        if isinstance(module, nn.Dropout):
+            module.p = 0.0
+
+
+class RewardTrainer:
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        config: RewardConfig,
+    ):
+        self.model = model
+        disable_dropout(self.model)
+        self.tokenizer = tokenizer
+        raw_train_dataset = load_dataset(args.dataset, split="train")
+        raw_validation_dataset = load_dataset(args.dataset, split="validation")
+        train_dataset = process_dataset(raw_train_dataset, args.train_dataset_size)
+        validation_dataset = process_dataset(
+            raw_validation_dataset, args.eval_dataset_size
+        )
+        self.train_dataloader = DataLoader(
+            train_dataset, batch_size=args.batch_size, shuffle=True
+        )
+        self.validation_dataloader = DataLoader(
+            validation_dataset, batch_size=args.batch_size
+        )
+        total_updates = (len(self.train_dataloader) + config.gradient_accumulation_steps-1) // config.gradient_accumulation_steps
+        self.total_updates = total_updates * config.num_train_epochs
+        self.warmup_steps = int(total_updates * config.warmup_ratio)
+        self.config = config
+        self.optimizer = self.setup_optimizer(config)
+        # for reproducibility
+        random.seed(config.seed)
+        np.random.seed(config.seed)
+        torch.manual_seed(config.seed)
+        torch.backends.cudnn.deterministic = True
+
+    def setup_optimizer(self, config):
+        # start with all of the candidate parameters
+        param_dict = {pn: p for pn, p in self.model.named_parameters()}
+        # filter out those that do not require grad
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwis    no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {"params": decay_params, "weight_decay": config.adamw_weight_decay},
+            {"params": nodecay_params, "weight_decay": 0.0},
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(
+            f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
+        )
+        print(
+            f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
+        )
+        # Create AdamW optimizer and use the fused version if it is available
+        if config.use_eight_bit_optimizer:
+            # fuse is not supported
+            optimizer = bnb.optim.AdamW8bit(
+                optim_groups,
+                lr=config.learning_rate,
+                betas=(config.adamw_beta1, config.adamw_beta2),
+            )
+        else:
+            optimizer = torch.optim.AdamW(
+                optim_groups,
+                lr=config.learning_rate,
+                betas=(config.adamw_beta1, config.adamw_beta2),
+                fused=config.use_adamw_fused,
+            )
+        return optimizer
+
+    # learning rate decay scheduler (cosine with warmup)
+    def get_lr(self, step):
+        # 1) linear warmup for warmup_iters steps
+        if step < self.warmup_steps:
+            return (
+                self.config.learning_rate * (step + 1) / (self.warmup_steps + 1)
+            )
+        # # 2) if it > lr_decay_steps, return min learning rate
+        # if step > self.config.lr_decay_steps:
+        #     return self.config.min_learning_rate
+        # 3) in between, use cosine decay down to min learning rate
+        decay_ratio = (step - self.warmup_steps) / (
+            self.total_updates - self.warmup_steps
+        )
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
+        return coeff * self.config.learning_rate
+
+    def train(self):
+        if self.config.wandb_log:
+            import wandb
+
+            assert self.config.wandb_project is not None, "Wandb project is required"
+            assert self.config.wandb_run_name is not None, "Wandb run name is required"
+            wandb.init(
+                project=self.config.wandb_project,
+                name=self.config.wandb_run_name,
+                config=asdict(self.config),
+                sync_tensorboard=True,
+            )
+        # Training loop over epochs
+        global_step = 0
+        best_eval_loss = float("inf")
+        step_loss = 0
+        step_accuracy = 0
+        self.optimizer.zero_grad(set_to_none=True)
+        for epoch in range(self.config.num_train_epochs):
+            for i, batch in enumerate(
+                tqdm(
+                    self.train_dataloader,
+                    desc=f"Epoch {epoch + 1}/{self.config.num_train_epochs}",
+                )
+            ):
+                query_chosen_response_tokens = batch["query_and_chosen_response_tokens"]
+                query_rejected_response_tokens = batch[
+                    "query_and_rejected_response_tokens"
+                ]
+                input_tokens = torch.concat(
+                    [query_chosen_response_tokens, query_rejected_response_tokens],
+                    dim=0,
+                )
+                input_tokens = input_tokens.to(self.model.device)
+                rewards = get_reward(self.model, self.tokenizer, input_tokens)
+                chosen_rewards = rewards[: len(query_chosen_response_tokens)]
+                rejected_rewards = rewards[len(query_chosen_response_tokens) :]
+                accuracy = (chosen_rewards > rejected_rewards).float().mean()
+                accuracy = accuracy / self.config.gradient_accumulation_steps
+                loss = -F.logsigmoid(chosen_rewards - rejected_rewards).mean()
+                loss = loss / self.config.gradient_accumulation_steps
+                step_loss += loss.item()
+                step_accuracy += accuracy.item()
+                loss.backward()
+                if (i + 1) % self.config.gradient_accumulation_steps == 0:
+                    lr = self.get_lr(global_step)
+                    for param_group in self.optimizer.param_groups:
+                        param_group["lr"] = lr
+                    if self.config.grad_clip > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.config.grad_clip
+                        )
+                    self.optimizer.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+                    if self.config.wandb_log:
+                        wandb.log(
+                            {
+                                "train_loss": step_loss,
+                                "train_accuracy": step_accuracy,
+                                "learning_rate": lr,
+                            }
+                        )
+                    if (global_step + 1) % self.config.eval_interval == 0:
+                        eval_loss, eval_accuracy = self.run_evaluation()
+                        print(
+                            f"Epoch {epoch + 1}, Global Step: {global_step}, training loss: {step_loss:.4f}, evaluation loss: {eval_loss:.4f}, evaluation accuracy: {eval_accuracy:.4f}"
+                        )
+                        if self.config.wandb_log:
+                            wandb.log(
+                                {
+                                    "eval_loss": eval_loss,
+                                    "eval_accuracy": eval_accuracy,
+                                }
+                            )
+                        if eval_loss < best_eval_loss:
+                            best_eval_loss = eval_loss
+                            output_dir = os.path.join(
+                                self.config.output_dir, f"checkpoint_{global_step}"
+                            )
+                            self.save_checkpoint(
+                                output_dir,
+                                self.model,
+                                self.tokenizer,
+                                self.optimizer,
+                                global_step,
+                                best_eval_loss,
+                                self.config,
+                            )
+                    step_loss = 0
+                    step_accuracy = 0
+                    global_step += 1
+
+    def save_checkpoint(
+        self,
+        output_dir,
+        model,
+        tokenizer,
+        optimizer,
+        global_step,
+        best_eval_loss,
+        config,
+    ):
+        """
+        Saves:
+        - HF model weights + config (save_pretrained)
+        - HF tokenizer (save_pretrained)
+        - Training state (optimizer/scheduler/scaler/custom) to training_state.pt
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 1) Save model + tokenizer in HF-native format
+        model.save_pretrained(output_dir)  # saves pytorch_model.bin + config.json
+        tokenizer.save_pretrained(
+            output_dir
+        )  # saves tokenizer.json, tokenizer_config.json, etc.
+
+        # 2) Save training state as a small .pt next to them
+        training_state = {
+            "optimizer": optimizer.state_dict(),
+            "global_step": global_step,
+            "best_eval_loss": best_eval_loss,
+            "config": config,
+        }
+        torch.save(training_state, os.path.join(output_dir, "training_state.pt"))
+
+    @torch.no_grad()
+    def run_evaluation(self):
+        total_loss = 0
+        step = 0
+        self.model.eval()
+        step = 0
+        total_loss = 0
+        total_accuracy = 0
+        for batch in tqdm(self.validation_dataloader, desc="Evaluating"):
+            query_chosen_response_tokens = batch["query_and_chosen_response_tokens"]
+            query_rejected_response_tokens = batch["query_and_rejected_response_tokens"]
+            input_tokens = torch.concat(
+                [query_chosen_response_tokens, query_rejected_response_tokens], dim=0
+            )
+            input_tokens = input_tokens.to(self.model.device)
+            rewards = get_reward(self.model, self.tokenizer, input_tokens)
+            chosen_rewards = rewards[: len(query_chosen_response_tokens)]
+            rejected_rewards = rewards[len(query_chosen_response_tokens) :]
+            accuracy = (chosen_rewards > rejected_rewards).float().mean()
+            total_accuracy += accuracy.item()
+            loss = -F.logsigmoid(chosen_rewards - rejected_rewards).mean()
+            total_loss += loss.item()
+            step += 1
+        average_loss = total_loss / step
+        average_accuracy = total_accuracy / step
+        self.model.train()
+        return average_loss, average_accuracy
+
+    def prepare_batch(self, batch):
+        input_tensor = torch.tensor(batch[self.input_field])[:, :-1].to(
+            self.model.device
+        )
+        label_tensor = torch.tensor(batch[self.label_field])[:, 1:].to(
+            self.model.device
+        )
+        return input_tensor, label_tensor
+
+
 if __name__ == "__main__":
     args = parse_args()
     model_path = args.model_path
@@ -258,15 +514,30 @@ if __name__ == "__main__":
     )
     reward_model = RewardModel(model_config)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    raw_train_dataset = load_dataset(args.dataset, split="train")
-    raw_validation_dataset = load_dataset(args.dataset, split="validation")
-    train_dataset = process_dataset(raw_train_dataset, args.train_dataset_size)
-    validation_dataset = process_dataset(raw_validation_dataset, args.eval_dataset_size)
-    example = train_dataset[0:2]
-    query_chosen_response_tokens = example["query_and_chosen_response_tokens"]
-    query_rejected_response_tokens = example["query_and_rejected_response_tokens"]
-    input_tokens = torch.concat(
-        [query_chosen_response_tokens, query_rejected_response_tokens], dim=0
-    )
-    rewards = get_reward(reward_model, tokenizer, input_tokens)
-    print(f"rewards: {rewards}, shape: {rewards.shape}")
+    # Create config dict from args, mapping to SFTConfig fields
+    config_dict = {
+        "num_train_epochs": args.num_train_epochs,
+        "dataset": args.dataset,
+        "seed": args.seed,
+        "batch_size": args.batch_size,
+        "grad_clip": args.grad_clip,
+        "learning_rate": args.learning_rate,
+        "warmup_ratio": args.warmup_ratio,
+        "train_dataset_size": args.train_dataset_size,
+        "num_eval_epochs": args.num_eval_epochs,
+        "eval_interval": args.eval_interval,
+        "eval_dataset_size": args.eval_dataset_size,
+        "wandb_log": args.wandb_log,
+        "wandb_project": args.wandb_project,
+        "wandb_run_name": args.wandb_run_name,
+        "use_adamw_fused": args.use_adamw_fused,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "adamw_beta1": args.adamw_beta1,
+        "adamw_beta2": args.adamw_beta2,
+        "adamw_weight_decay": args.adamw_weight_decay,
+        "use_eight_bit_optimizer": args.use_eight_bit_optimizer,
+        "output_dir": args.output_dir,
+    }
+    config = RewardConfig(**config_dict)
+    reward_trainer = RewardTrainer(reward_model, tokenizer, config)
+    reward_trainer.train()
