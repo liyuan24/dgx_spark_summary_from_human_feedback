@@ -75,9 +75,14 @@ class RewardModel(PreTrainedModel):
         super().__init__(config)
         self.config = config
         self.lm_backbone = AutoModel.from_pretrained(
-            config.base_model, config=config.base_config, trust_remote_code=True, device_map="auto"
+            config.base_model,
+            config=config.base_config,
+            trust_remote_code=True,
+            device_map="auto",
         )
-        self.scalar_head = nn.Linear(config.base_config.hidden_size, 1, device=self.lm_backbone.device)
+        self.scalar_head = nn.Linear(
+            config.base_config.hidden_size, 1, device=self.lm_backbone.device
+        )
         # Details 10 in https://arxiv.org/abs/2403.17031
         nn.init.normal_(
             self.scalar_head.weight,
@@ -138,7 +143,13 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--model_path", type=str, default="./sft_output/checkpoint_809", help="base reward model path"
+        "--sft_model_path",
+        type=str,
+        default="./sft_output/checkpoint_809",
+        help="sft model path",
+    )
+    parser.add_argument(
+        "--reward_model_path", type=str, default=None, help="base reward model path"
     )
     parser.add_argument(
         "--dataset",
@@ -156,7 +167,7 @@ def parse_args():
         "--train_dataset_size", type=int, default=None, help="Training dataset size"
     )
     parser.add_argument(
-        "--eval_dataset_size", type=int, default=500, help="Evaluation dataset size"
+        "--eval_dataset_size", type=int, default=1000, help="Evaluation dataset size"
     )
 
     # Training configs
@@ -169,16 +180,14 @@ def parse_args():
     parser.add_argument(
         "--num_train_epochs", type=int, default=1, help="Number of training epochs"
     )
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument(
         "--grad_clip", type=float, default=1.0, help="Gradient clipping"
     )
     parser.add_argument(
-        "--learning_rate", type=float, default=1e-4, help="Learning rate"
+        "--learning_rate", type=float, default=5e-5, help="Learning rate"
     )
-    parser.add_argument(
-        "--warmup_ratio", type=float, default=0.03, help="Warmup ratio"
-    )
+    parser.add_argument("--warmup_ratio", type=float, default=0.03, help="Warmup ratio")
 
     # Evaluation configs
     parser.add_argument(
@@ -199,7 +208,7 @@ def parse_args():
         help="summary_from_human_feedback_reward",
     )
     parser.add_argument(
-        "--wandb_run_name", type=str, default="2nd run", help="run name"
+        "--wandb_run_name", type=str, default="4th run with qwen 2.5 1.5b model v2", help="run name"
     )
 
     # Optimizer configs
@@ -212,7 +221,7 @@ def parse_args():
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
-        default=8,
+        default=16,
         help="Number of gradient accumulation steps",
     )
     parser.add_argument(
@@ -275,7 +284,9 @@ class RewardTrainer:
         self.validation_dataloader = DataLoader(
             validation_dataset, batch_size=args.batch_size
         )
-        total_updates = (len(self.train_dataloader) + config.gradient_accumulation_steps-1) // config.gradient_accumulation_steps
+        total_updates = (
+            len(self.train_dataloader) + config.gradient_accumulation_steps - 1
+        ) // config.gradient_accumulation_steps
         self.total_updates = total_updates * config.num_train_epochs
         self.warmup_steps = int(total_updates * config.warmup_ratio)
         self.config = config
@@ -328,9 +339,7 @@ class RewardTrainer:
     def get_lr(self, step):
         # 1) linear warmup for warmup_iters steps
         if step < self.warmup_steps:
-            return (
-                self.config.learning_rate * (step + 1) / (self.warmup_steps + 1)
-            )
+            return self.config.learning_rate * (step + 1) / (self.warmup_steps + 1)
         # # 2) if it > lr_decay_steps, return min learning rate
         # if step > self.config.lr_decay_steps:
         #     return self.config.min_learning_rate
@@ -419,7 +428,8 @@ class RewardTrainer:
                         if eval_loss < best_eval_loss:
                             best_eval_loss = eval_loss
                             output_dir = os.path.join(
-                                self.config.output_dir, f"checkpoint_{global_step}"
+                                self.config.output_dir,
+                                f"checkpoint_basemodel_qwen_2.5_3b_{global_step}",
                             )
                             self.save_checkpoint(
                                 output_dir,
@@ -507,13 +517,24 @@ class RewardTrainer:
 
 if __name__ == "__main__":
     args = parse_args()
-    model_path = args.model_path
-    model_config = ScalarModelConfig(
-        base_model=model_path,
-        base_config=AutoConfig.from_pretrained(model_path),
-    )
-    reward_model = RewardModel(model_config)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    sft_model_path = args.sft_model_path
+    reward_model_path = args.reward_model_path
+    if reward_model_path is not None:
+        print(f"Loading reward model from {reward_model_path}")
+        model_config = ScalarModelConfig(
+            base_model=args.reward_model_path,
+            base_config=AutoConfig.from_pretrained(args.reward_model_path),
+        )
+        tokenizer = AutoTokenizer.from_pretrained(args.sft_model_path)
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    else:
+        print(f"Loading reward model from {sft_model_path}")
+        model_config = ScalarModelConfig(
+            base_model=sft_model_path,
+            base_config=AutoConfig.from_pretrained(sft_model_path),
+        )
+        tokenizer = AutoTokenizer.from_pretrained(sft_model_path)
+    reward_model = RewardModel(model_config).to(device="cuda")
     # Create config dict from args, mapping to SFTConfig fields
     config_dict = {
         "num_train_epochs": args.num_train_epochs,
