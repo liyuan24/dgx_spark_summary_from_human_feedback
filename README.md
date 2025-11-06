@@ -239,5 +239,65 @@ max length of validation data: 133
 ```
 
 ### Reward Model Training
+[The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) suggested using SFT model to initialize the reward model. But in my experiments, the training and validation performance for SFT model as the initial reward model is not good. One possible cause is the SFT model is of size 0.5B.
+
+I then tried [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) and [Qwen/Qwen2.5-1.5B](https://huggingface.co/Qwen/Qwen2.5-1.5B) to initialize the reward model. Qwen 2.5 1.5b is better than Qwen 2.5 0.5b in my experiments.
+
+#### Qwen 2.5 0.5B vs Qwen 2.5 1.5B
+The training and validation performance for Qwen 2.5 0.5B and Qwen 2.5 1.5B are shown in the following charts.
+
+![qwen comparison](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/qwen_comparison.png)
+
+#### Hyperparameters for Qwen 2.5 1.5B
+
+<table>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>grad_clip</td>
+<td>1</td>
+</tr>
+<tr>
+<td>batch_size</td>
+<td>8</td>
+</tr>
+<tr>
+<td>adamw_beta1</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>adamw_beta2</td>
+<td>0.95</td>
+</tr>
+<tr>
+<td>warmup_ratio</td>
+<td>0.03</td>
+</tr>
+<tr>
+<td>learning_rate</td>
+<td>0.00005</td>
+</tr>
+<tr>
+<td>num_train_epochs</td>
+<td>1</td>
+</tr>
+<tr>
+<td>adamw_weight_decay</td>
+<td>0.1</td>
+</tr>
+<tr>
+<td>use_eight_bit_optimizer</td>
+<td>true</td>
+</tr>
+<tr>
+<td>gradient_accumulation_steps</td>
+<td>16</td>
+</tr>
+</table>
+
 
 ### Reward Normalization
+
+### Agreement Rate with GPT5

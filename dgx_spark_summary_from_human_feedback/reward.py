@@ -53,7 +53,8 @@ class RewardConfig:
     use_eight_bit_optimizer: bool = False
 
     # saving
-    output_dir: str = "reward_output"  # directory to save the reward model
+    output_dir: str = None  # directory to save the reward model
+    output_checkpoint_prefix: str = None
 
 
 class ScalarModelConfig(PretrainedConfig):
@@ -172,12 +173,6 @@ def parse_args():
 
     # Training configs
     parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="reward_output",
-        help="Directory to save the reward model",
-    )
-    parser.add_argument(
         "--num_train_epochs", type=int, default=1, help="Number of training epochs"
     )
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
@@ -208,7 +203,7 @@ def parse_args():
         help="summary_from_human_feedback_reward",
     )
     parser.add_argument(
-        "--wandb_run_name", type=str, default="4th run with qwen 2.5 1.5b model v2", help="run name"
+        "--wandb_run_name", type=str, default=None, help="run name"
     )
 
     # Optimizer configs
@@ -238,6 +233,20 @@ def parse_args():
         action="store_true",
         default=True,
         help="Use 8-bit optimizer (default: True)",
+    )
+
+    # output
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Directory to save the reward model",
+    )
+    parser.add_argument(
+        "--output_checkpoint_prefix",
+        type=str,
+        default=None,
+        help="Prefix for the checkpoint name",
     )
 
     return parser.parse_args()
@@ -429,7 +438,7 @@ class RewardTrainer:
                             best_eval_loss = eval_loss
                             output_dir = os.path.join(
                                 self.config.output_dir,
-                                f"checkpoint_basemodel_qwen_2.5_3b_{global_step}",
+                                f"{self.config.output_checkpoint_prefix}_{global_step}",
                             )
                             self.save_checkpoint(
                                 output_dir,
@@ -443,6 +452,20 @@ class RewardTrainer:
                     step_loss = 0
                     step_accuracy = 0
                     global_step += 1
+        # always save the final checkpoint
+        output_dir = os.path.join(
+            self.config.output_dir,
+            f"{self.config.output_checkpoint_prefix}_final_step",
+        )
+        self.save_checkpoint(
+            output_dir,
+            self.model,
+            self.tokenizer,
+            self.optimizer,
+            global_step,
+            best_eval_loss,
+            self.config,
+        )
 
     def save_checkpoint(
         self,
@@ -517,6 +540,11 @@ class RewardTrainer:
 
 if __name__ == "__main__":
     args = parse_args()
+    assert args.output_dir is not None, "output_dir is required"
+    assert args.output_checkpoint_prefix is not None, "output_checkpoint_prefix is required"
+    if args.wandb_log:
+        assert args.wandb_run_name is not None, "wandb_run_name is required"
+        assert args.wandb_project is not None, "wandb_project is required"
     sft_model_path = args.sft_model_path
     reward_model_path = args.reward_model_path
     if reward_model_path is not None:
@@ -535,7 +563,6 @@ if __name__ == "__main__":
         )
         tokenizer = AutoTokenizer.from_pretrained(sft_model_path)
     reward_model = RewardModel(model_config).to(device="cuda")
-    # Create config dict from args, mapping to SFTConfig fields
     config_dict = {
         "num_train_epochs": args.num_train_epochs,
         "dataset": args.dataset,
@@ -558,6 +585,7 @@ if __name__ == "__main__":
         "adamw_weight_decay": args.adamw_weight_decay,
         "use_eight_bit_optimizer": args.use_eight_bit_optimizer,
         "output_dir": args.output_dir,
+        "output_checkpoint_prefix": args.output_checkpoint_prefix,
     }
     config = RewardConfig(**config_dict)
     reward_trainer = RewardTrainer(reward_model, tokenizer, config)
