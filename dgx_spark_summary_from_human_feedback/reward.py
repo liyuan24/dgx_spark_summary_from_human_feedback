@@ -85,9 +85,7 @@ class RewardModel(PreTrainedModel):
             base_config = config.base_config
         else:
             raise ValueError(f"Invalid type of base config: {type(config.base_config)}")
-        self.lm_backbone = AutoModel.from_config(
-            base_config
-        )
+        self.lm_backbone = AutoModel.from_config(base_config)
         self.scalar_head = nn.Linear(
             base_config.hidden_size, 1, device=self.lm_backbone.device
         )
