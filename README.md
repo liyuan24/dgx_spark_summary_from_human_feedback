@@ -307,5 +307,10 @@ python3 -m dgx_spark_summary_from_human_feedback.load_local_reward_model_and_pus
 ```
 
 ### Reward Normalization
+Following reward normalization in [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031), use the trained reward model to compute the reward for the [SFT dataset](https://huggingface.co/datasets/seangogo/processed_tldr_sft_dataset_20251029_045736) and use the average reward to normalize the reward model output.
+
+```bash
+python3 -m dgx_spark_summary_from_human_feedback.reward_normalization --model_path seangogo/Qwen2.5-1.5B_reward_model_v2 --sft_dataset seangogo/processed_tldr_sft_dataset_20251029_045736 --push_model_to_hf --hf_model_repo_id seangogo/Qwen2.5-1.5B_reward_model_v2_normalized --push_dataset_to_hf
+```
 
 ### Agreement Rate with GPT5
