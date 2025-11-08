@@ -58,15 +58,19 @@ class RewardConfig:
 
 
 class ScalarModelConfig(PretrainedConfig):
+    model_type = "reward_model"
+
     def __init__(
         self,
-        base_model: str = "Qwen/Qwen2.5-0.5B",
+        base_model: str = "Qwen/Qwen2.5-1.5B",
         base_config: PretrainedConfig = AutoConfig.from_pretrained("Qwen/Qwen2.5-0.5B"),
+        bias_val: float = 0.0,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.base_model = base_model
         self.base_config = base_config
+        self.bias_val = bias_val
 
 
 class RewardModel(PreTrainedModel):
@@ -75,21 +79,25 @@ class RewardModel(PreTrainedModel):
     def __init__(self, config: ScalarModelConfig):
         super().__init__(config)
         self.config = config
-        self.lm_backbone = AutoModel.from_pretrained(
-            config.base_model,
-            config=config.base_config,
-            trust_remote_code=True,
-            device_map="auto",
+        if isinstance(config.base_config, dict):
+            base_config = AutoConfig.from_pretrained(config.base_model)
+        elif isinstance(config.base_config, PretrainedConfig):
+            base_config = config.base_config
+        else:
+            raise ValueError(f"Invalid type of base config: {type(config.base_config)}")
+        self.lm_backbone = AutoModel.from_config(
+            base_config
         )
         self.scalar_head = nn.Linear(
-            config.base_config.hidden_size, 1, device=self.lm_backbone.device
+            base_config.hidden_size, 1, device=self.lm_backbone.device
         )
         # Details 10 in https://arxiv.org/abs/2403.17031
         nn.init.normal_(
             self.scalar_head.weight,
             mean=0.0,
-            std=1.0 / math.sqrt(config.base_config.hidden_size + 1),
+            std=1.0 / math.sqrt(base_config.hidden_size + 1),
         )
+        nn.init.constant_(self.scalar_head.bias, config.bias_val)
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         output = self.lm_backbone(input_ids)
@@ -202,9 +210,7 @@ def parse_args():
         default="summary_from_human_feedback_reward",
         help="summary_from_human_feedback_reward",
     )
-    parser.add_argument(
-        "--wandb_run_name", type=str, default=None, help="run name"
-    )
+    parser.add_argument("--wandb_run_name", type=str, default=None, help="run name")
 
     # Optimizer configs
     parser.add_argument(
@@ -541,7 +547,9 @@ class RewardTrainer:
 if __name__ == "__main__":
     args = parse_args()
     assert args.output_dir is not None, "output_dir is required"
-    assert args.output_checkpoint_prefix is not None, "output_checkpoint_prefix is required"
+    assert (
+        args.output_checkpoint_prefix is not None
+    ), "output_checkpoint_prefix is required"
     if args.wandb_log:
         assert args.wandb_run_name is not None, "wandb_run_name is required"
         assert args.wandb_project is not None, "wandb_project is required"

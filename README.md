@@ -297,6 +297,14 @@ The training and validation performance for Qwen 2.5 0.5B and Qwen 2.5 1.5B are 
 </tr>
 </table>
 
+### Upload the trained reward model to Hugging Face
+1. Copy the `reward.py` to the saved checkpoint folder
+2. Update the `config.json` file to add the `auto_map` section. It will map the `AutoConfig` and `AutoModel` to the `ScalarModelConfig` and `RewardModel` classes.
+3. Test the reward model by running `python3 -m dgx_spark_summary_from_human_feedback.load_local_load_local_reward_model_and_push_to_hfreward_model --model_path your_local_checkpoint_path`
+4. Upload the reward model to Hugging Face by running
+```bash
+python3 -m dgx_spark_summary_from_human_feedback.load_local_reward_model_and_push_to_hf --model_path /workspace/dgx_spark_summary_from_human_feedback/reward_output/checkpoint_basemodel_qwen_2.5_1.5b_final_step --push_to_hf --hf_repo_id seangogo/Qwen2.5-1.5B_reward_model_v2
+```
 
 ### Reward Normalization
 
