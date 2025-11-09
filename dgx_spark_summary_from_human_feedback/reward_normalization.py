@@ -40,28 +40,33 @@ def load_model(model_path: str):
     print(f"Model loaded successfully!")
 
     return model, tokenizer
-    
 
 
 if __name__ == "__main__":
     args = parse_args()
     reward_model, tokenizer = load_model(args.model_path)
-    reward_model.eval() # set model to evaluation mode
+    reward_model.eval()  # set model to evaluation mode
     # with no gradient graph and compiled model, we can achieve roughly 25% speedup in inference
-    torch.set_grad_enabled(False) # disable gradient computation to speed up inference
-    reward_model = torch.compile(reward_model, mode="max-autotune") # use optimized kernels for inference
+    torch.set_grad_enabled(False)  # disable gradient computation to speed up inference
+    reward_model = torch.compile(
+        reward_model, mode="max-autotune"
+    )  # use optimized kernels for inference
     sft_dataset = load_dataset(args.sft_dataset_path, split="train")
-    sft_dataset_tensor = sft_dataset.with_format("torch", columns=["query_and_response_tokens"])
+    sft_dataset_tensor = sft_dataset.with_format(
+        "torch", columns=["query_and_response_tokens"]
+    )
     sft_dataloader = DataLoader(sft_dataset_tensor, batch_size=8, shuffle=False)
     n = 0
     avg_reward = 0.0
     rewards = []
     for batch in tqdm.tqdm(sft_dataloader):
-        query_and_response_tokens = batch["query_and_response_tokens"].to(reward_model.device, non_blocking=True)
+        query_and_response_tokens = batch["query_and_response_tokens"].to(
+            reward_model.device, non_blocking=True
+        )
         batch_rewards = get_reward(reward_model, tokenizer, query_and_response_tokens)
         rewards.extend(batch_rewards.tolist())
         current_sum_reward = batch_rewards.sum().item()
-        total_sum_reward = (avg_reward * n + current_sum_reward)
+        total_sum_reward = avg_reward * n + current_sum_reward
         n += batch_rewards.shape[0]
         avg_reward = total_sum_reward / n
     print(f"Average reward: {avg_reward}")
@@ -78,5 +83,3 @@ if __name__ == "__main__":
         print(f"Pushing dataset to Hugging Face...")
         sft_dataset.push_to_hub(f"{args.sft_dataset_path}_with_rewards", split="train")
         print(f"Dataset pushed to Hugging Face successfully!")
-
-

@@ -89,6 +89,9 @@ sft_output/
 # Reward output directory
 reward_output/
 
+# DPO output directory
+dpo_output/
+
 # Wandb
 wandb/
 
