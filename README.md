@@ -314,3 +314,29 @@ python3 -m dgx_spark_summary_from_human_feedback.reward_normalization --model_pa
 ```
 
 ### Agreement Rate with GPT5
+
+## DPO
+[DPO](https://arxiv.org/abs/2305.18290) is a method for aligning language models without reward model. It only needs a comparison dataset to fine-tune the policy model. Compared to RLHF, e.g. PPO, GRPO, DPO is much cheaper and faster to train.
+
+Although there is no reward model in DPO, the loss function of it is similar to the reward model.
+
+The DPO loss function is defined as:
+
+$$\mathcal{L}_{\text{DPO}}(\pi_\theta) = -\mathbb{E}_{(x, y_c, y_r) \sim \mathcal{D}_{\text{PREF}}} \left[ \log \sigma \left( \beta \log \frac{\pi_\theta(y_c | x)}{\pi^{\text{SFT}}(y_c | x)} - \beta \log \frac{\pi_\theta(y_r | x)}{\pi^{\text{SFT}}(y_r | x)} \right) \right]$$
+
+where:
+- $\pi_\theta$ is the current policy model being trained
+- $\pi^{\text{SFT}}$ is the supervised fine-tuned (SFT) reference model
+- $(x, y_c, y_r)$ are triplets sampled from the preference dataset $\mathcal{D}_{\text{PREF}}$
+  - $x$ is the input prompt
+  - $y_c$ is the chosen (preferred) response
+  - $y_r$ is the rejected response
+- $\beta$ is a hyperparameter that controls how confident you are about the comparison dataset quality. 
+- $\sigma$ is the sigmoid function
+
+The loss aims to maximize the log-probability of the chosen response relative to the SFT model, while minimizing the log-probability of the rejected response relative to the SFT model.
+
+To train the DPO model, run:
+```bash
+python3 dpo.py --output_dir dpo_output --output_checkpoint_prefix checkpoint --wandb_run_name <wandb_run_name> --sft_model_path <local_or_hf_path_to_sft_model>
+```
