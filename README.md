@@ -340,3 +340,150 @@ To train the DPO model, run:
 ```bash
 python3 dpo.py --output_dir dpo_output --output_checkpoint_prefix checkpoint --wandb_run_name <wandb_run_name> --sft_model_path <local_or_hf_path_to_sft_model>
 ```
+
+**Training curve of DPO:**
+
+![DPO training curve](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/dpo_training_curve.png)
+
+**Hyperparameters for DPO:**
+
+<table>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+<tr>
+<td>grad_clip</td>
+<td>1</td>
+</tr>
+<tr>
+<td>batch_size</td>
+<td>8</td>
+</tr>
+<tr>
+<td>adamw_beta1</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>adamw_beta2</td>
+<td>0.95</td>
+</tr>
+<tr>
+<td>warmup_ratio</td>
+<td>0.03</td>
+</tr>
+<tr>
+<td>learning_rate</td>
+<td>0.00005</td>
+</tr>
+<tr>
+<td>num_train_epochs</td>
+<td>1</td>
+</tr>
+<tr>
+<td>adamw_weight_decay</td>
+<td>0.1</td>
+</tr>
+<tr>
+<td>use_eight_bit_optimizer</td>
+<td>true</td>
+</tr>
+<tr>
+<td>gradient_accumulation_steps</td>
+<td>16</td>
+</tr>
+<tr>
+<td>label_smoothing</td>
+<td>0.1</td>
+</tr>
+<tr>
+<td>beta</td>
+<td>0.3</td>
+</tr>
+</table>
+
+### Example Responses
+
+<table>
+<tr>
+<th>input</th>
+<th>base model tldr</th>
+<th>SFT model tldr</th>
+<th>DPO model tldr</th>
+</tr>
+<tr>
+<td valign="top"><pre><code>SUBREDDIT: r/relationships
+
+TITLE: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?
+
+POST: I have been dating this
+guy for 1 month now and
+everything was great until
+last Sunday when I noticed he
+wasn't responding to my text
+with the same flirty, cute,
+enthusiastic text that he
+usually would. He used to
+call me baby, babe but since
+last Sunday he has said none
+of those words and texting
+has been less and
+communication has been less.
+
+He invited me over last night
+to watch a movie so I went
+over and I think we had one
+conversation the whole night,
+it was how my day was. He
+never even tried to start a
+conversation after the movie
+and he has never asked if he
+could get high in front of me
+until today which I was
+totally fine with but I
+thought it was weird that the
+whole time we hung out before
+he never smoked in front of
+me. I am not sure if he's
+getting comfortable or he
+just doesn't care anymore?
+
+Anyways, as he was walking me
+out to my car I asked him if
+everything was okay because
+he has been acting different.
+His only response was, "Yes,
+I'm fine" and then it got
+awkward and I left in my car.
+
+Do you think I am being pushy
+or too clingy asking that
+question? I regret asking it
+right after I asked it
+because it makes me feel like
+I have low self-esteem for
+this relationship. Maybe I
+just worry too much but it
+has been eating at me.
+
+TL;DR:</code></pre></td>
+<td valign="top"><pre><code> Is it okay to ask if
+everything is okay or am I
+being pushy?
+
+Title: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?</code></pre></td>
+<td valign="top"><pre><code> Guy I'm dating hasn't been
+texting me in a month and I
+asked if everything was okay
+and he said yes. Am I being
+pushy or too clingy asking if
+everything is okay?<|endoftext|></code></pre></td>
+<td valign="top"><pre><code> I have been dating this guy for 1 month and everything was great until last Sunday when he started acting different. I asked him if everything was okay and he said yes but I think it was weird that he never smoked in front of me. I regret asking it right after I asked it because it makes me feel like I have low self-esteem for this relationship. Maybe I just worry too much but it has been eating at me.<|endoftext|></code></pre></td>
+</tr>
+</table>
