@@ -398,7 +398,7 @@ python3 dpo.py --output_dir dpo_output --output_checkpoint_prefix checkpoint --w
 </tr>
 <tr>
 <td>beta</td>
-<td>0.3</td>
+<td>0.1</td>
 </tr>
 </table>
 
