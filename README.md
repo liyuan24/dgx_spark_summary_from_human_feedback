@@ -341,6 +341,8 @@ To train the DPO model, run:
 python3 dpo.py --output_dir dpo_output --output_checkpoint_prefix checkpoint --wandb_run_name <wandb_run_name> --sft_model_path <local_or_hf_path_to_sft_model>
 ```
 
+The trained model was pushed to [Hugging Face](https://huggingface.co/seangogo/dpo_summary_from_human_feedback).
+
 **Training curve of DPO:**
 
 ![DPO training curve](https://github.com/liyuan24/dgx_spark_summary_from_human_feedback/blob/main/assets/dpo.png)
