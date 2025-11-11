@@ -484,6 +484,11 @@ asked if everything was okay
 and he said yes. Am I being
 pushy or too clingy asking if
 everything is okay?<|endoftext|></code></pre></td>
-<td valign="top"><pre><code> I have been dating this guy for 1 month and everything was great until last Sunday when he started acting different. I asked him if everything was okay and he said yes but I think it was weird that he never smoked in front of me. I regret asking it right after I asked it because it makes me feel like I have low self-esteem for this relationship. Maybe I just worry too much but it has been eating at me.<|endoftext|></code></pre></td>
+<td valign="top"><pre><code> I have been dating this guy 
+for 1 month and he hasn't responded to my text with the 
+same flirty, cute, enthusiastic text that he usually would. 
+I was really happy when we had our movie and I was really 
+excited about it. I was wondering if I should ask him if 
+everything is okay or am I being pushy.<|endoftext|></code></pre></td>
 </tr>
 </table>

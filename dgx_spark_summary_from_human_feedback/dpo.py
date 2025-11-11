@@ -143,7 +143,7 @@ def parse_args():
     parser.add_argument(
         "--use_eight_bit_optimizer",
         action="store_true",
-        default=True,
+        default=False,
         help="Use 8-bit optimizer (default: True)",
     )
 
@@ -162,7 +162,7 @@ def parse_args():
     )
 
     # DPO hyperparameters
-    parser.add_argument("--beta", type=float, default=0.3, help="Beta for DPO loss")
+    parser.add_argument("--beta", type=float, default=0.1, help="Beta for DPO loss")
     parser.add_argument(
         "--label_smoothing", type=float, default=0.1, help="Label smoothing for DPO"
     )
