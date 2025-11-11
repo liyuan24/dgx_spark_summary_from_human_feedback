@@ -343,7 +343,7 @@ python3 dpo.py --output_dir dpo_output --output_checkpoint_prefix checkpoint --w
 
 **Training curve of DPO:**
 
-![DPO training curve](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/dpo_training_curve.png)
+![DPO training curve](https://github.com/liyuan24/dgx_spark_summary_from_human_feedback/blob/main/assets/dpo.png)
 
 **Hyperparameters for DPO:**
 
