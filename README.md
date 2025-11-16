@@ -494,3 +494,172 @@ excited about it. I was wondering if I should ask him if
 everything is okay or am I being pushy.<|endoftext|></code></pre></td>
 </tr>
 </table>
+
+## GRPO
+The trained model was pushed to [Hugging Face](https://huggingface.co/seangogo/summary_from_human_feedback_grpo_100).
+
+### Rollout Generation
+A few notes on generation configuration
+```
+self.generation_config = GenerationConfig(
+    max_new_tokens=config.response_length,
+    temperature=config.temperature + 1e-7,
+    top_k=0,
+    top_p=1.0,
+    do_sample=True,
+    eos_token_id=self.tokenizer.eos_token_id,
+    pad_token_id=self.tokenizer.pad_token_id,
+)
+```
+1. We need to explicitly set the `eos_token_id` in the generation configuration. By default it is `None` and the generation will continue until the `max_new_tokens` is reached.
+2. In the [PPO code](https://github.com/vwxyzjn/summarize_from_feedback_details/blob/main/summarize_from_feedback_details/ppo.py#L542) of [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031), `min_new_tokens` and `max_new_tokens` are set to the same value as `response_length`. In my experiments, this will not work because the generation will continue until the `max_new_tokens` is reached and the EOS token will not be generated. And we need to get the reward from the EOS token. So I removed the `min_new_tokens` setting.
+3. The input prompt is left padded with pad token so that prompt tokens are with the same length.
+4. Note that when generating the responses for a batch of prompts, with the config above, when one sequence reaches the EOS token, pad token will be added to pad the response to the same length as the longest response in the batch.
+
+### Optimization Process
+
+Multiple epochs of mini-batches gradient updates. See more details in [PPO paper](https://arxiv.org/pdf/1707.06347).
+1. The whole rollout data will be split into multiple mini-batches.
+2. In case the GPU memory cannot fit one mini-batch, we will split the mini-batch into multiple micro-batches and do gradient accumulation for each micro-batch.
+3. After all micro-batches are processed, the weights of the policy model will be updated.
+
+So the total number of weight update steps is 
+
+$$\frac{num\_epochs * total\_samples * num\_responses\_per\_prompt}{batch\_size * mini\_batch\_size}$$
+
+### Vanilla PPO loss vs [Dual Clip loss](https://arxiv.org/pdf/1912.09729)
+![PPO loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/ppo_loss.png)
+![Dual Clip loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/dual_clip_loss.png)
+
+When advantage is positive, the magnitude of the loss is bounded in vanilla PPO loss. But when advantage is negative, the magnitude of the loss is unbounded in vanilla PPO loss. Dual Clip loss is proposed to tackle this. When advantage is negative and ratio is greater than `c`, the loss will be clipped to `c * advantage` to stabilize the training.
+
+### Training Curve
+
+Run the following command to train the GRPO model:
+```bash
+sh run_grpo.sh
+```
+
+![GRPO training curve](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/grpo_reward_climbing.png)
+
+### Hyperparameters
+
+| Category | Hyperparameter | Value |
+|----------|---------------|-------|
+| **Training** | `num_train_epochs` | 1 |
+| | `learning_rate` | 5e-5 |
+| | `warmup_ratio` | 0.03 |
+| | `grad_clip` | 1.0 |
+| **Batch Sizes** | `batch_size` | 16 |
+| | `mini_batch_size` | 64 |
+| | `micro_batch_size` | 8 |
+| | `num_responses_per_group` | 8 |
+| **Optimizer** | `use_adamw_fused` | true |
+| | `adamw_beta1` | 0.9 |
+| | `adamw_beta2` | 0.95 |
+| | `adamw_weight_decay` | 0.1 |
+| | `use_eight_bit_optimizer` | false |
+| **GRPO** | `update_per_rollout` | 4 |
+| | `clip_ratio` | 0.2 |
+| | `kl_coeff` | 0.05 |
+| | `kl_penalty_mode` | "k3" |
+| | `loss_agg_mode` | "seq-mean-token-mean" |
+| | `normalize_adv_by_std_of_group` | true |
+| | `no_eos_penalty` | -1.0 |
+| **Generation** | `response_length` | 63 |
+| | `temperature` | 0.7 |
+
+### Example Responses
+
+### Example Responses
+
+<table>
+<tr>
+<th>input</th>
+<th>base model tldr</th>
+<th>SFT tldr</th>
+<th>DPO tldr</th>
+<th>GRPO tldr</th>
+</tr>
+<tr>
+<td valign="top"><pre><code>SUBREDDIT: r/relationships
+
+TITLE: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?
+
+POST: I have been dating this
+guy for 1 month now and
+everything was great until
+last Sunday when I noticed he
+wasn't responding to my text
+with the same flirty, cute,
+enthusiastic text that he
+usually would. He used to
+call me baby, babe but since
+last Sunday he has said none
+of those words and texting
+has been less and
+communication has been less.
+
+He invited me over last night
+to watch a movie so I went
+over and I think we had one
+conversation the whole night,
+it was how my day was. He
+never even tried to start a
+conversation after the movie
+and he has never asked if he
+could get high in front of me
+until today which I was
+totally fine with but I
+thought it was weird that the
+whole time we hung out before
+he never smoked in front of
+me. I am not sure if he's
+getting comfortable or he
+just doesn't care anymore?
+
+Anyways, as he was walking me
+out to my car I asked him if
+everything was okay because
+he has been acting different.
+His only response was, "Yes,
+I'm fine" and then it got
+awkward and I left in my car.
+
+Do you think I am being pushy
+or too clingy asking that
+question? I regret asking it
+right after I asked it
+because it makes me feel like
+I have low self-esteem for
+this relationship. Maybe I
+just worry too much but it
+has been eating at me.
+
+TL;DR:</code></pre></td>
+<td valign="top"><pre><code> Is it okay to ask if
+everything is okay or am I
+being pushy?
+
+Title: Me 28 F with guy I'm
+dating 30 M - 1 month, Is it
+okay to ask if everything is
+okay or am I being pushy?</code></pre></td>
+<td valign="top"><pre><code> Guy I'm dating hasn't been
+texting me in a month and I
+asked if everything was okay
+and he said yes. Am I being
+pushy or too clingy asking if
+everything is okay?<|endoftext|></code></pre></td>
+<td valign="top"><pre><code> I have been dating this guy 
+for 1 month and he hasn't responded to my text with the 
+same flirty, cute, enthusiastic text that he usually would. 
+I was really happy when we had our movie and I was really 
+excited about it. I was wondering if I should ask him if 
+everything is okay or am I being pushy.<|endoftext|></code></pre></td>
+<td valign="top"><pre><code> Dating guy is acting different and never responds to anything I ask. Is it okay to ask if everything is okay or am I being pushy? Worried about low self-esteem for this relationship.<|endoftext|></code></pre></td>
+</tr>
+</table>

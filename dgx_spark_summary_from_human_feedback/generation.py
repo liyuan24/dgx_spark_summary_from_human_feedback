@@ -170,7 +170,7 @@ def parse_args():
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.0,
+        default=0.7,
         help="Sampling temperature",
     )
     parser.add_argument(
@@ -225,6 +225,7 @@ if __name__ == "__main__":
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             eos_token_id=tokenizer.eos_token_id,
+            do_sample=True,
         )
 
     # Decode generated text
