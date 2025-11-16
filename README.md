@@ -1,11 +1,12 @@
 # dgx_spark_summary_from_human_feedback
 
-This repo contains the code for reproducing [Learning to summarize from human feedback](https://arxiv.org/abs/2009.01325) in one DGX Spark. [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) has already done this in an 8-H100 cluster. We will refer to this work for many details.
+This repo contains the code for reproducing [Learning to summarize from human feedback](https://arxiv.org/abs/2009.01325) in one DGX Spark. [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) has already done this in an 8-H100 cluster. We will refer to this work and [verl](https://github.com/volcengine/verl) for some implementation details.
 
 # Steps
 1. Supervised Fine-tuning
 2. Reward Model Training
-3. Reinforcement learning from human feedback
+3. DPO Training
+4. GRPO Training
 
 # Supervised Fine-tuning
 I will first use [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) as the base model and its tokenizer to preprocess the TLDR dataset. Checking the padding token and eos token of the tokenizer,
@@ -222,10 +223,10 @@ cd ..
 python3 -m dgx_spark_summary_from_human_feedback.generation --checkpoint_path your_checkpoint_path --use_hf_checkpoint
 ```
 
-## Reward Model
+# Reward Model
 The dataset for reward model is [openai/summarize_from_feedback](https://huggingface.co/datasets/openai/summarize_from_feedback). But we cannot use `datasets.load_dataset` to download it because it is using a builder class which is not supported by new version of `datasets` library.
 
-### Download the comparison dataset
+## Download the comparison dataset
 I will use [summarize_from_feedback.py](https://huggingface.co/datasets/openai/summarize_from_feedback/blob/main/summarize_from_feedback.py) to download the comparison dataset. I copied it to the repo and name it to `summarize_from_feedback.py`.
 
 Use this command to download the comparison dataset and get the number of maximum length of tokens for both chosen and rejected responses. Note the tokenizer is [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B).
@@ -238,17 +239,17 @@ max length of training data: 133
 max length of validation data: 133
 ```
 
-### Reward Model Training
+## Reward Model Training
 [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) suggested using SFT model to initialize the reward model. But in my experiments, the training and validation performance for SFT model as the initial reward model is not good. One possible cause is the SFT model is of size 0.5B.
 
 I then tried [Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) and [Qwen/Qwen2.5-1.5B](https://huggingface.co/Qwen/Qwen2.5-1.5B) to initialize the reward model. Qwen 2.5 1.5b is better than Qwen 2.5 0.5b in my experiments.
 
-#### Qwen 2.5 0.5B vs Qwen 2.5 1.5B
+### Qwen 2.5 0.5B vs Qwen 2.5 1.5B
 The training and validation performance for Qwen 2.5 0.5B and Qwen 2.5 1.5B are shown in the following charts.
 
 ![qwen comparison](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/qwen_comparison.png)
 
-#### Hyperparameters for Qwen 2.5 1.5B
+### Hyperparameters for Qwen 2.5 1.5B
 
 <table>
 <tr>
@@ -297,7 +298,7 @@ The training and validation performance for Qwen 2.5 0.5B and Qwen 2.5 1.5B are 
 </tr>
 </table>
 
-### Upload the trained reward model to Hugging Face
+## Upload the trained reward model to Hugging Face
 1. Copy the `reward.py` to the saved checkpoint folder
 2. Update the `config.json` file to add the `auto_map` section. It will map the `AutoConfig` and `AutoModel` to the `ScalarModelConfig` and `RewardModel` classes.
 3. Test the reward model by running `python3 -m dgx_spark_summary_from_human_feedback.load_local_load_local_reward_model_and_push_to_hfreward_model --model_path your_local_checkpoint_path`
@@ -306,16 +307,14 @@ The training and validation performance for Qwen 2.5 0.5B and Qwen 2.5 1.5B are 
 python3 -m dgx_spark_summary_from_human_feedback.load_local_reward_model_and_push_to_hf --model_path /workspace/dgx_spark_summary_from_human_feedback/reward_output/checkpoint_basemodel_qwen_2.5_1.5b_final_step --push_to_hf --hf_repo_id seangogo/Qwen2.5-1.5B_reward_model_v2
 ```
 
-### Reward Normalization
+## Reward Normalization
 Following reward normalization in [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031), use the trained reward model to compute the reward for the [SFT dataset](https://huggingface.co/datasets/seangogo/processed_tldr_sft_dataset_20251029_045736) and use the average reward to normalize the reward model output.
 
 ```bash
 python3 -m dgx_spark_summary_from_human_feedback.reward_normalization --model_path seangogo/Qwen2.5-1.5B_reward_model_v2 --sft_dataset seangogo/processed_tldr_sft_dataset_20251029_045736 --push_model_to_hf --hf_model_repo_id seangogo/Qwen2.5-1.5B_reward_model_v2_normalized --push_dataset_to_hf
 ```
 
-### Agreement Rate with GPT5
-
-## DPO
+# DPO
 [DPO](https://arxiv.org/abs/2305.18290) is a method for aligning language models without reward model. It only needs a comparison dataset to fine-tune the policy model. Compared to RLHF, e.g. PPO, GRPO, DPO is much cheaper and faster to train.
 
 Although there is no reward model in DPO, the loss function of it is similar to the reward model.
@@ -495,10 +494,10 @@ everything is okay or am I being pushy.<|endoftext|></code></pre></td>
 </tr>
 </table>
 
-## GRPO
+# GRPO
 The trained model was pushed to [Hugging Face](https://huggingface.co/seangogo/summary_from_human_feedback_grpo_100).
 
-### Rollout Generation
+## Rollout Generation
 A few notes on generation configuration
 ```
 self.generation_config = GenerationConfig(
@@ -516,7 +515,7 @@ self.generation_config = GenerationConfig(
 3. The input prompt is left padded with pad token so that prompt tokens are with the same length.
 4. Note that when generating the responses for a batch of prompts, with the config above, when one sequence reaches the EOS token, pad token will be added to pad the response to the same length as the longest response in the batch.
 
-### Optimization Process
+## Optimization Process
 
 Multiple epochs of mini-batches gradient updates. See more details in [PPO paper](https://arxiv.org/pdf/1707.06347).
 1. The whole rollout data will be split into multiple mini-batches.
@@ -527,13 +526,13 @@ So the total number of weight update steps is
 
 $$\frac{num\_epochs * total\_samples * num\_responses\_per\_prompt}{batch\_size * mini\_batch\_size}$$
 
-### Vanilla PPO loss vs [Dual Clip loss](https://arxiv.org/pdf/1912.09729)
+## Vanilla PPO loss vs [Dual Clip loss](https://arxiv.org/pdf/1912.09729)
 ![PPO loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/ppo_loss.png)
 ![Dual Clip loss](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/dual_clip_loss.png)
 
 When advantage is positive, the magnitude of the loss is bounded in vanilla PPO loss. But when advantage is negative, the magnitude of the loss is unbounded in vanilla PPO loss. Dual Clip loss is proposed to tackle this. When advantage is negative and ratio is greater than `c`, the loss will be clipped to `c * advantage` to stabilize the training.
 
-### Training Curve
+## Training Curve
 
 Run the following command to train the GRPO model:
 ```bash
@@ -542,7 +541,7 @@ sh run_grpo.sh
 
 ![GRPO training curve](https://raw.githubusercontent.com/liyuan24/dgx_spark_summary_from_human_feedback/refs/heads/main/assets/grpo_reward_climbing.png)
 
-### Hyperparameters
+## Hyperparameters
 
 | Category | Hyperparameter | Value |
 |----------|---------------|-------|
@@ -569,9 +568,7 @@ sh run_grpo.sh
 | **Generation** | `response_length` | 63 |
 | | `temperature` | 0.7 |
 
-### Example Responses
-
-### Example Responses
+## Example Responses
 
 <table>
 <tr>
