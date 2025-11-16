@@ -2,6 +2,19 @@
 
 This repo contains the code for reproducing [Learning to summarize from human feedback](https://arxiv.org/abs/2009.01325) in one DGX Spark. [The N+ Implementation Details of RLHF with PPO: A Case Study on TL;DR Summarization](https://arxiv.org/abs/2403.17031) has already done this in an 8-H100 cluster. We will refer to this work and [verl](https://github.com/volcengine/verl) for some implementation details.
 
+Recommend using Docker to play with the code if you are running on DGX Spark.
+
+```bash
+sudo docker build --build-arg HF_TOKEN=$HF_TOKEN \
+    --build-arg CUDA_VERSION=13.0 \
+    -t summary_from_human_feedback .
+```
+
+```bash
+sudo sh launch_docker.sh
+```
+
+
 # Steps
 1. Supervised Fine-tuning
 2. Reward Model Training
