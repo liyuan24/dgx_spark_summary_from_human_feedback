@@ -92,6 +92,12 @@ reward_output/
 # DPO output directory
 dpo_output/
 
+# GRPO output directories
+grpo_output/
+grpo_output_*/
+grpo_val_output/
+grpo_val_output_*/
+
 # Wandb
 wandb/
 
