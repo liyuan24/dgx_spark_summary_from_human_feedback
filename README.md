@@ -660,6 +660,12 @@ same flirty, cute, enthusiastic text that he usually would.
 I was really happy when we had our movie and I was really 
 excited about it. I was wondering if I should ask him if 
 everything is okay or am I being pushy.<|endoftext|></code></pre></td>
-<td valign="top"><pre><code> Dating guy is acting different and never responds to anything I ask. Is it okay to ask if everything is okay or am I being pushy? Worried about low self-esteem for this relationship.<|endoftext|></code></pre></td>
+<td valign="top"><pre><code> 
+Dating guy is acting different 
+and never responds to anything 
+I ask. Is it okay to ask if 
+everything is okay or am I being 
+pushy? Worried about low self-esteem 
+for this relationship.<|endoftext|></code></pre></td>
 </tr>
 </table>
